@@ -1,17 +1,15 @@
 //! Blinks the LED on a Pico board
 //!
 //! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
+//! It will also alternate the LEDs connected to GP14 and GP15.
 #![no_std]
 #![no_main]
 
+use core::panic::PanicInfo;
 use cortex_m_rt::entry;
-// use defmt::*;
-// use defmt_rtt as _;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint;
-// use panic_probe as _;
 use rp2040_hal as hal;
-use core::panic::PanicInfo;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},

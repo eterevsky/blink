@@ -1,12 +1,12 @@
 # Blinking some LEDs on Raspberry Pi Pico
 
+A minimal Rust firmware for Raspberry Pi Pico. Based on [rp2040-project-template](https://github.com/rp-rs/rp2040-project-template), but without the debugging bits.
+
 ## Installing requirements
 
 ```
 rustup target install thumbv6m-none-eabi
-cargo install --git https://github.com/rp-rs/probe-run --branch rp2040-support
-cargo install flip-link
-cargo install elf2uf2-rs
+cargo install --locked elf2uf2-rs
 ```
 
 ## Running
@@ -15,8 +15,5 @@ cargo install elf2uf2-rs
 * Optionally connect LEDs to GPIO14 and GPIO15 via 50 Ohm resistors.
 
 ```
-cargo build --release
-elf2uf2-rs target/thumbv6m-none-eabi/release/blink \
-           target/thumbv6m-none-eabi/release/blink.uf2
-cp target/thumbv6m-none-eabi/release/blink.uf2 <RPico mount point>
+cargo run [--release]
 ```
