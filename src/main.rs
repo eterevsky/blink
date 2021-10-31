@@ -5,12 +5,13 @@
 #![no_main]
 
 use cortex_m_rt::entry;
-use defmt::*;
-use defmt_rtt as _;
+// use defmt::*;
+// use defmt_rtt as _;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint;
-use panic_probe as _;
+// use panic_probe as _;
 use rp2040_hal as hal;
+use core::panic::PanicInfo;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
@@ -23,9 +24,14 @@ use hal::{
 #[used]
 pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}
+
 #[entry]
 fn main() -> ! {
-    info!("Program start");
+    // info!("Program start");
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
@@ -55,13 +61,19 @@ fn main() -> ! {
     );
 
     let mut led_pin = pins.gpio25.into_push_pull_output();
+    let mut pin14 = pins.gpio14.into_push_pull_output();
+    let mut pin15 = pins.gpio15.into_push_pull_output();
 
     loop {
-        info!("on!");
+        // info!("on!");
         led_pin.set_high().unwrap();
+        pin14.set_high().unwrap();
+        pin15.set_low().unwrap();
         delay.delay_ms(500);
-        info!("off!");
+        // info!("off!");
         led_pin.set_low().unwrap();
+        pin14.set_low().unwrap();
+        pin15.set_high().unwrap();
         delay.delay_ms(500);
     }
 }
