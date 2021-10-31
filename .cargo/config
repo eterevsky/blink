@@ -4,7 +4,7 @@ target = "thumbv6m-none-eabi"
 [target.thumbv6m-none-eabi]
 # Converts the built ELF file to UF2 and uploads it to Pico connected via USB
 # as a mass storage device.
-runner = "elf2uf2-rs -d"
+runner = "elf2uf2-rs -d -s"
 
 # Provided by cortex-m-rt
 rustflags = ["-C", "link-arg=-Tlink.x"]

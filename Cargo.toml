@@ -9,4 +9,9 @@ cortex-m-rt = "0.7.0"
 embedded-hal = "0.2.6"
 embedded-time = "0.12.0"
 rp2040-boot2 = "0.2"
-rp2040-hal = "0.2"
+
+# Latest version on crates.io (0.2) doesn't support USB.
+rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", branch="main", version="0.3" }
+
+usb-device = "0.2.8"
+usbd-serial = "0.1.1"

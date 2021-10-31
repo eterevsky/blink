@@ -6,17 +6,12 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use cortex_m_rt::entry;
-use embedded_hal::digital::v2::OutputPin;
-use embedded_time::fixed_point::FixedPoint;
+use embedded_hal::digital::v2::OutputPin as _;
+use embedded_time::fixed_point::FixedPoint as _;
 use rp2040_hal as hal;
-
-use hal::{
-    clocks::{init_clocks_and_plls, Clock},
-    pac,
-    sio::Sio,
-    watchdog::Watchdog,
-};
+use rp2040_hal::{clocks::Clock as _, pac, sio::Sio, watchdog::Watchdog};
+use usb_device;
+// use usb_device::bus::UsbBus as _;
 
 #[link_section = ".boot2"]
 #[used]
@@ -27,29 +22,15 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[entry]
+// External high-speed crystal on the pico board is 12Mhz
+pub const XOSC_CRYSTAL_FREQ: u32 = 12_000_000;
+
+#[cortex_m_rt::entry]
 fn main() -> ! {
-    // info!("Program start");
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
     let sio = Sio::new(pac.SIO);
-
-    // External high-speed crystal on the pico board is 12Mhz
-    let external_xtal_freq_hz = 12_000_000u32;
-    let clocks = init_clocks_and_plls(
-        external_xtal_freq_hz,
-        pac.XOSC,
-        pac.CLOCKS,
-        pac.PLL_SYS,
-        pac.PLL_USB,
-        &mut pac.RESETS,
-        &mut watchdog,
-    )
-    .ok()
-    .unwrap();
-
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
     let pins = hal::gpio::Pins::new(
         pac.IO_BANK0,
@@ -62,13 +43,53 @@ fn main() -> ! {
     let mut pin14 = pins.gpio14.into_push_pull_output();
     let mut pin15 = pins.gpio15.into_push_pull_output();
 
+    let clocks = hal::clocks::init_clocks_and_plls(
+        XOSC_CRYSTAL_FREQ,
+        pac.XOSC,
+        pac.CLOCKS,
+        pac.PLL_SYS,
+        pac.PLL_USB,
+        &mut pac.RESETS,
+        &mut watchdog,
+    )
+    .ok()
+    .unwrap();
+    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+
+     // Set up the USB driver
+     let usb_bus = usb_device::bus::UsbBusAllocator::new(hal::usb::UsbBus::new(
+        pac.USBCTRL_REGS,
+        pac.USBCTRL_DPRAM,
+        clocks.usb_clock,
+        true,
+        &mut pac.RESETS,
+    ));
+
+    let mut serial = usbd_serial::SerialPort::new(&usb_bus);
+
+    for _ in 0..5 {
+        led_pin.set_high().unwrap();
+        delay.delay_ms(500);
+        led_pin.set_low().unwrap();
+        delay.delay_ms(500);
+    }
+
+    match serial.write(b"Hello, World!\r\n") {
+        Ok(_) => { pin14.set_high().unwrap(); },
+        Err(_) => { pin15.set_high().unwrap(); }
+    };
+
+    led_pin.set_high().unwrap();
+
+
     loop {
-        // info!("on!");
+        serial.write(b"on\n").unwrap();
         led_pin.set_high().unwrap();
         pin14.set_high().unwrap();
         pin15.set_low().unwrap();
         delay.delay_ms(500);
-        // info!("off!");
+
+        serial.write(b"off\n").unwrap();
         led_pin.set_low().unwrap();
         pin14.set_low().unwrap();
         pin15.set_high().unwrap();
