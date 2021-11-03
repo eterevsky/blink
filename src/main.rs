@@ -54,7 +54,7 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+    // let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
      // Set up the USB driver
      let usb_bus = usb_device::bus::UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -81,23 +81,30 @@ fn main() -> ! {
         .manufacturer("Raspberry Pi")
         .product("Pico")
         .serial_number("TEST")
-        .device_class(0xEF)
-        .device_sub_class(2)
+        // .device_class(0xEF)
+        // .device_sub_class(2)
+        .device_class(2)
         .device_protocol(1)
         .build();
 
     led_pin.set_high().unwrap();
 
     let timer = hal::timer::Timer::new(pac.TIMER, &mut pac.RESETS);
-    let mut said_hello = false;
+    let mut next_message = 2_000_000;
     loop {
         // A welcome message at the beginning
-        if !said_hello && timer.get_counter() >= 2_000_000 {
-            said_hello = true;
+        if timer.get_counter() >= next_message {
+            next_message += 2_000_000;
             // let _ = serial.write(b"Hello, World!\r\n");
             match serial.write(b"Hello, World!\r\n") {
-                Ok(_) => { green_pin.set_high().unwrap(); },
-                Err(_) => { red_pin.set_high().unwrap(); }
+                Ok(_) => {
+                    green_pin.set_high().unwrap();
+                    red_pin.set_low().unwrap();
+                },
+                Err(_) => {
+                    red_pin.set_high().unwrap();
+                    green_pin.set_low().unwrap();
+                }
             };
         }
 
