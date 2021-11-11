@@ -2,6 +2,19 @@
 
 A minimal Rust firmware for Raspberry Pi Pico that blinks the onboard LED and writes messages to USB serial. Based on [rp2040-project-template](https://github.com/rp-rs/rp2040-project-template).
 
+## Compatibility
+
+Tested with:
+
+* Raspberry Pi Pico
+* Pimoroni Pico LiPo
+* Arduino Nano RP2040 Connect
+
+and
+
+* Windows 10/11
+* macOS
+
 ## Requirements
 
 ```
