@@ -9,12 +9,14 @@ use core::panic::PanicInfo;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_time::fixed_point::FixedPoint as _;
 use rp2040_hal as hal;
+use rp2040_hal::pac::interrupt;
 use rp2040_hal::{clocks::Clock as _, pac, sio::Sio, watchdog::Watchdog};
 use usb_device;
 use usb_device::{
-    bus::UsbBus,
-    device::{UsbDeviceBuilder, UsbVidPid},
+    bus::UsbBusAllocator,
+    device::{UsbDevice, UsbDeviceBuilder, UsbVidPid},
 };
+use usbd_serial::SerialPort;
 
 #[link_section = ".boot2"]
 #[used]
@@ -25,26 +27,17 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
+/// The USB Device Driver (shared with the interrupt).
+static mut USB_DEVICE: Option<UsbDevice<hal::usb::UsbBus>> = None;
+
+/// The USB Bus Driver (shared with the interrupt).
+static mut USB_BUS: Option<UsbBusAllocator<hal::usb::UsbBus>> = None;
+
+/// The USB Serial Device Driver (shared with the interrupt).
+static mut USB_SERIAL: Option<SerialPort<hal::usb::UsbBus>> = None;
+
 // External high-speed crystal on the pico board is 12Mhz
 pub const XOSC_CRYSTAL_FREQ: u32 = 12_000_000;
-
-fn write_usb<B: UsbBus>(
-    message: &[u8],
-    serial: &mut usbd_serial::SerialPort<B>,
-    success_pin: &mut impl OutputPin,
-    error_pin: &mut impl OutputPin,
-) {
-    match serial.write(message) {
-        Ok(_) => {
-            success_pin.set_high().ok();
-            error_pin.set_low().ok();
-        }
-        Err(_) => {
-            success_pin.set_low().ok();
-            error_pin.set_high().ok();
-        }
-    };
-}
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -60,10 +53,6 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    let mut green_pin = pins.gpio16.into_push_pull_output();
-    let mut red_pin = pins.gpio17.into_push_pull_output();
-
     let clocks = hal::clocks::init_clocks_and_plls(
         XOSC_CRYSTAL_FREQ,
         pac.XOSC,
@@ -75,78 +64,62 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
-    // let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
-    // Set up the USB driver
-    let usb_bus = usb_device::bus::UsbBusAllocator::new(hal::usb::UsbBus::new(
-        pac.USBCTRL_REGS,
-        pac.USBCTRL_DPRAM,
-        clocks.usb_clock,
-        true,
-        &mut pac.RESETS,
-    ));
+    {
+        let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
+            pac.USBCTRL_REGS,
+            pac.USBCTRL_DPRAM,
+            clocks.usb_clock,
+            true,
+            &mut pac.RESETS,
+        ));
+        unsafe {
+            USB_BUS = Some(usb_bus);
+        }
+    }
+    let usb_bus = unsafe { USB_BUS.as_mut().unwrap() };
 
-    let mut serial = usbd_serial::SerialPort::new(&usb_bus);
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x2E8A, 0x000a))
+    {
+        let usb_serial = usbd_serial::SerialPort::new(usb_bus);
+        unsafe {
+            USB_SERIAL = Some(usb_serial);
+        }
+    }
+    let serial = unsafe { USB_SERIAL.as_mut().unwrap() };
+
+    let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x2E8A, 0x000a))
         .manufacturer("Raspberry Pi")
         .product("Pico")
         .serial_number("TEST")
         .device_class(2)
         .device_protocol(1)
         .build();
-
-    led_pin.set_high().unwrap();
-
-    let timer = hal::timer::Timer::new(pac.TIMER, &mut pac.RESETS);
-    let mut next_message = 2_000_000;
-    let mut led_state = false;
-    let mut said_hello = false;
-    loop {
-        if timer.get_counter() >= next_message {
-            next_message += 2_000_000;
-            if !said_hello {
-                write_usb(
-                    b"Hello, world!\n",
-                    &mut serial,
-                    &mut green_pin,
-                    &mut red_pin,
-                );
-                said_hello = true;
-            };
-
-            if led_state {
-                write_usb(b"On\n", &mut serial, &mut green_pin, &mut red_pin);
-                led_pin.set_high().unwrap();
-            } else {
-                write_usb(b"Off\n", &mut serial, &mut green_pin, &mut red_pin);
-                led_pin.set_low().unwrap();
-            }
-            led_state = !led_state;
-        }
-
-        if usb_dev.poll(&mut [&mut serial]) {
-            let mut buf = [0u8; 64];
-            match serial.read(&mut buf) {
-                Err(_e) => {
-                    // Do nothing
-                }
-                Ok(0) => {
-                    // Do nothing
-                }
-                Ok(count) => {
-                    // Convert to upper case
-                    buf.iter_mut().take(count).for_each(|b| {
-                        b.make_ascii_uppercase();
-                    });
-                    // Send back to the host
-                    let mut wr_ptr = &buf[..count];
-                    while !wr_ptr.is_empty() {
-                        let _ = serial.write(wr_ptr).map(|len| {
-                            wr_ptr = &wr_ptr[len..];
-                        });
-                    }
-                }
-            }
-        }
+    unsafe {
+        USB_DEVICE = Some(usb_dev);
     }
+
+    // Enable the USB interrupt
+    unsafe {
+        pac::NVIC::unmask(hal::pac::Interrupt::USBCTRL_IRQ);
+    };
+
+    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+    let mut led_pin = pins.gpio25.into_push_pull_output();
+
+    loop {
+        led_pin.set_high().unwrap();
+        serial.write(b"on\n").unwrap();
+        delay.delay_ms(500);
+        led_pin.set_low().unwrap();
+        serial.write(b"off\n").unwrap();
+        delay.delay_ms(500);
+    }
+}
+
+#[allow(non_snake_case)]
+#[interrupt]
+unsafe fn USBCTRL_IRQ() {
+    let usb_dev = USB_DEVICE.as_mut().unwrap();
+    let serial = USB_SERIAL.as_mut().unwrap();
+    if usb_dev.poll(&mut [serial]) {}
 }
