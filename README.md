@@ -8,7 +8,7 @@ Tested with:
 
 * Raspberry Pi Pico
 * Pimoroni Pico LiPo
-* Arduino Nano RP2040 Connect
+* Arduino Nano RP2040 Connect (doesn't have a LED on the same port)
 
 and
 
@@ -24,8 +24,7 @@ cargo install --locked elf2uf2-rs
 
 ## Running
 
-* Connect Raspberry Pi Pico by USB while holding BOOTSEL.
-* Optionally connect LEDs to GPIO14 and GPIO15 via 50 Ohm resistors.
+Connect Raspberry Pi Pico by USB while holding BOOTSEL (for Arduino Nano Connect ground 13th pin).
 
 ```
 cargo run --release
